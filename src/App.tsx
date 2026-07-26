@@ -10,7 +10,7 @@ import { SpeakScreen } from './screens/SpeakScreen';
 import { TABS, TabBar, TabKey } from './ui/TabBar';
 import { Text } from './ui/Text';
 import { useKeyboardVisible } from './ui/useKeyboardVisible';
-import { colors, spacing } from './ui/theme';
+import { colors, isIOS, spacing } from './ui/theme';
 
 export default function App() {
   return (
@@ -56,8 +56,12 @@ function Shell() {
       style={[styles.root, { paddingTop: insets.top, paddingBottom: insetUnderKeyboard }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
+      {/*
+        An iOS large title sits low and heavy in its own space; a Material 3 small top
+        app bar is a shorter, lighter bar. Same component, different proportions.
+      */}
       <View style={styles.header}>
-        <Text variant="display" accessibilityRole="header">
+        <Text variant={isIOS ? 'display' : 'title'} accessibilityRole="header">
           {title}
         </Text>
       </View>
@@ -65,7 +69,7 @@ function Shell() {
       <View style={styles.body}>
         {!ready ? (
           <View style={styles.loading}>
-            <ActivityIndicator size="large" color={colors.primary} />
+            <ActivityIndicator size="large" color={colors.accent} />
             <Text variant="body" muted>
               Getting ready…
             </Text>
@@ -97,8 +101,9 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
+    paddingTop: isIOS ? spacing.sm : spacing.md,
+    paddingBottom: isIOS ? spacing.xs : spacing.md,
+    justifyContent: 'center',
   },
   body: {
     flex: 1,

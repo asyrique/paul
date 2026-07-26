@@ -4,6 +4,7 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
 import App from './App';
 import { SpeechProvider } from './speech/SpeechProvider';
+import { SettingsScreen } from './screens/SettingsScreen';
 import { SpeakScreen } from './screens/SpeakScreen';
 import { SpeechEngine, SpeechVoice } from './speech/types';
 import { touchTarget } from './ui/theme';
@@ -295,5 +296,67 @@ describe.each(['ios', 'android'] as const)('keyboard avoidance (%s)', (os) => {
 
     await keyboard.emit(hide);
     expect(rootPaddingBottom()).toBe(0);
+  });
+});
+
+function renderSettings(engine: SpeechEngine) {
+  return render(
+    <SpeechProvider engine={engine}>
+      <SettingsScreen />
+    </SpeechProvider>,
+  );
+}
+
+const SILENT_SWITCH_LABEL = 'Speak even on silent';
+
+describe('speaking through the silent switch', () => {
+  const originalOS = Platform.OS as 'ios' | 'android';
+
+  afterEach(() => {
+    setPlatform(originalOS);
+  });
+
+  function optionsOfFirstSpeak(speak: jest.Mock) {
+    return speak.mock.calls[0][2] as { overrideSilentSwitch: boolean };
+  }
+
+  it('asks to override the silent switch by default', async () => {
+    setPlatform('ios');
+    const { engine, speak } = fakeEngine();
+    const view = await renderSettings(engine);
+
+    await fireEvent.press(view.getByRole('button', { name: 'Try it' }));
+
+    // systemEngine turns this into `useApplicationAudioSession: false`, the system-managed
+    // session that speaks through the switch.
+    expect(optionsOfFirstSpeak(speak as unknown as jest.Mock).overrideSilentSwitch).toBe(true);
+  });
+
+  it('stops overriding it once the setting is turned off', async () => {
+    setPlatform('ios');
+    const { engine, speak } = fakeEngine();
+    const view = await renderSettings(engine);
+
+    await fireEvent(view.getByLabelText(SILENT_SWITCH_LABEL), 'valueChange', false);
+    await fireEvent.press(view.getByRole('button', { name: 'Try it' }));
+
+    expect(optionsOfFirstSpeak(speak as unknown as jest.Mock).overrideSilentSwitch).toBe(false);
+  });
+
+  it('offers the setting on iOS', async () => {
+    setPlatform('ios');
+    const view = await renderSettings(fakeEngine().engine);
+    expect(view.queryByLabelText(SILENT_SWITCH_LABEL)).not.toBeNull();
+  });
+
+  it('hides the setting on Android, which has no equivalent lever', async () => {
+    setPlatform('android');
+    const view = await renderSettings(fakeEngine().engine);
+
+    // Android text-to-speech already plays on the media stream and exposes nothing to
+    // change, so a toggle here would do nothing at all.
+    expect(view.queryByLabelText(SILENT_SWITCH_LABEL)).toBeNull();
+    // The rest of the section still renders.
+    expect(view.queryByLabelText('Vibrate when I tap')).not.toBeNull();
   });
 });

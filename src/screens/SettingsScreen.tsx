@@ -1,13 +1,15 @@
 import React from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, View } from 'react-native';
 
 import { useSpeech } from '../speech/SpeechProvider';
 import { openTtsSettings } from '../speech/openTtsSettings';
 import { SpeechVoice } from '../speech/types';
 import { Banner } from '../ui/Banner';
 import { Button } from '../ui/Button';
+import { Chip } from '../ui/Chip';
+import { Section, SelectRow, Separator, SwitchRow } from '../ui/List';
 import { Text } from '../ui/Text';
-import { colors, radius, spacing, touchTarget } from '../ui/theme';
+import { colors, isIOS, spacing } from '../ui/theme';
 
 const SAMPLE = 'G’day. This is how I will sound.';
 
@@ -40,24 +42,34 @@ export function SettingsScreen() {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.content}>
-      <Section title="Voice">
-        <Banner
-          level={voiceHealth.level}
-          headline={voiceHealth.headline}
-          detail={voiceHealth.detail}
-        />
-        <Button label="Fix the voice" variant="secondary" onPress={handleFixVoice} />
-        <Text variant="caption">
-          {Platform.OS === 'android'
-            ? 'This opens your phone’s text-to-speech settings. Choose "Install voice data" and download English (Australia). Pick the option marked offline or local so it works with no internet.'
-            : 'This tells you where to find the Australian voices in the iPhone Settings app.'}
-        </Text>
-        <Button label="Check again for voices" variant="quiet" onPress={() => void refreshVoices()} />
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      <Section
+        title="Voice"
+        footer={
+          Platform.OS === 'android'
+            ? 'Fixing the voice opens your phone’s text-to-speech settings. Choose “Install voice data” and download English (Australia). Pick the one marked offline or local so it works with no internet.'
+            : 'This tells you where to find the Australian voices in the iPhone Settings app.'
+        }
+      >
+        <View style={styles.bannerWrap}>
+          <Banner
+            level={voiceHealth.level}
+            headline={voiceHealth.headline}
+            detail={voiceHealth.detail}
+          />
+        </View>
+        <View style={styles.buttonRow}>
+          <Button label="Fix the voice" variant="secondary" onPress={handleFixVoice} />
+          <Button
+            label="Check again for voices"
+            variant="quiet"
+            onPress={() => void refreshVoices()}
+          />
+        </View>
       </Section>
 
       <Section title="Speaking speed">
-        <View style={styles.rateGrid}>
+        <View style={styles.chipGrid}>
           {RATES.map((rate) => (
             <Chip
               key={rate.label}
@@ -67,47 +79,79 @@ export function SettingsScreen() {
             />
           ))}
         </View>
-        {speaking ? (
-          <Button label="Stop" variant="stop" onPress={stop} />
-        ) : (
-          <Button
-            label="Try it"
-            variant="primary"
-            onPress={() => speak(SAMPLE)}
-            accessibilityHint="Speaks a short sample so you can hear the speed and voice"
-          />
-        )}
+        <View style={styles.buttonRow}>
+          {speaking ? (
+            <Button label="Stop" variant="stop" onPress={stop} />
+          ) : (
+            <Button
+              label="Try it"
+              variant="primary"
+              onPress={() => speak(SAMPLE)}
+              accessibilityHint="Speaks a short sample so you can hear the speed and voice"
+            />
+          )}
+        </View>
       </Section>
 
-      <Section title="Choose a voice">
+      <Section
+        title="Choose a voice"
+        footer="“Best available” picks the most Australian voice on this phone that also works without internet."
+      >
         {voices.length === 0 ? (
-          <Text variant="body" muted>
-            No voices found yet. Tap “Check again for voices” above.
-          </Text>
+          <View style={styles.emptyWrap}>
+            <Text variant="body" muted>
+              No voices found yet. Tap “Check again for voices” above.
+            </Text>
+          </View>
         ) : (
           <>
-            <VoiceRow
-              label="Best available (recommended)"
-              detail="Let the app pick the most Australian offline voice on this phone."
+            <SelectRow
+              label="Best available"
+              detail="Recommended"
               selected={settings.voiceId === undefined}
               onPress={() => updateSettings({ voiceId: undefined })}
             />
             {voices.map((voice) => (
-              <VoiceRow
-                key={voice.id}
-                label={voice.name}
-                detail={describeVoiceRow(voice)}
-                selected={settings.voiceId === voice.id}
-                highlighted={voice.id === activeVoice?.id}
-                onPress={() => updateSettings({ voiceId: voice.id })}
-              />
+              <React.Fragment key={voice.id}>
+                <Separator />
+                <SelectRow
+                  label={voice.name}
+                  detail={describeVoiceRow(voice, voice.id === activeVoice?.id)}
+                  selected={settings.voiceId === voice.id}
+                  onPress={() => updateSettings({ voiceId: voice.id })}
+                />
+              </React.Fragment>
             ))}
           </>
         )}
       </Section>
 
-      <Section title="Other">
-        <ToggleRow
+      <Section
+        title="Sound and feedback"
+        footer={
+          Platform.OS === 'ios'
+            ? 'Speaking on silent means the app still talks when the side switch is set to silent — handy if it gets flicked by accident.'
+            : undefined
+        }
+      >
+        {/*
+          iOS only. Android's text-to-speech already plays on the media volume and offers
+          no equivalent switch, so showing a dead toggle would just be confusing.
+        */}
+        {Platform.OS === 'ios' ? (
+          <>
+            <SwitchRow
+              label="Speak even on silent"
+              detail="Ignore the side switch when talking"
+              value={settings.speakOverSilentSwitch}
+              onValueChange={(speakOverSilentSwitch) =>
+                updateSettings({ speakOverSilentSwitch })
+              }
+            />
+            <Separator />
+          </>
+        ) : null}
+        <SwitchRow
           label="Vibrate when I tap"
           value={settings.haptics}
           onValueChange={(haptics) => updateSettings({ haptics })}
@@ -115,208 +159,56 @@ export function SettingsScreen() {
       </Section>
 
       <Section title="About">
-        <Text variant="caption">
-          Say It works completely offline once your phone has an Australian voice
-          installed. Nothing you type leaves this phone — there is no account, no
-          sync and no internet connection used for speech.
-        </Text>
+        <View style={styles.emptyWrap}>
+          <Text variant="caption">
+            Say It works completely offline once your phone has an Australian voice
+            installed. Nothing you type leaves this phone — there is no account, no sync
+            and no internet connection used for speech.
+          </Text>
+        </View>
       </Section>
     </ScrollView>
   );
 }
 
-function describeVoiceRow(voice: SpeechVoice): string {
+function describeVoiceRow(voice: SpeechVoice, inUse: boolean): string {
   const bits = [voice.language];
   if (voice.isAustralian) bits.push('Australian');
   if (voice.offline === 'offline') bits.push('works offline');
   if (voice.offline === 'network') bits.push('needs internet');
   if (voice.enhanced) bits.push('higher quality');
+  if (inUse) bits.push('currently in use');
   return bits.join(' · ');
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <View style={styles.section} accessibilityRole="summary">
-      <Text variant="title">{title}</Text>
-      <View style={styles.sectionBody}>{children}</View>
-    </View>
-  );
-}
-
-function Chip({
-  label,
-  selected,
-  onPress,
-}: {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="radio"
-      accessibilityState={{ selected, checked: selected }}
-      accessibilityLabel={label}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.chip,
-        selected && styles.chipSelected,
-        pressed && styles.chipPressed,
-      ]}
-    >
-      <Text variant="label" onDark={selected} center>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-function VoiceRow({
-  label,
-  detail,
-  selected,
-  highlighted,
-  onPress,
-}: {
-  label: string;
-  detail: string;
-  selected: boolean;
-  highlighted?: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="radio"
-      accessibilityState={{ selected, checked: selected }}
-      accessibilityLabel={`${label}. ${detail}`}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.voiceRow,
-        selected && styles.voiceRowSelected,
-        pressed && styles.chipPressed,
-      ]}
-    >
-      <View style={styles.radio}>{selected ? <View style={styles.radioDot} /> : null}</View>
-      <View style={styles.voiceText}>
-        <Text variant="label">{label}</Text>
-        <Text variant="caption">
-          {detail}
-          {highlighted && !selected ? ' · currently in use' : ''}
-        </Text>
-      </View>
-    </Pressable>
-  );
-}
-
-function ToggleRow({
-  label,
-  value,
-  onValueChange,
-}: {
-  label: string;
-  value: boolean;
-  onValueChange: (value: boolean) => void;
-}) {
-  return (
-    <View style={styles.toggleRow}>
-      <Text variant="label" style={styles.toggleLabel}>
-        {label}
-      </Text>
-      <Switch
-        value={value}
-        onValueChange={onValueChange}
-        accessibilityLabel={label}
-        // Android's Switch is small and fixed-size; scaling it up keeps it in
-        // proportion with the rest of the controls at large font sizes.
-        style={styles.switch}
-        trackColor={{ true: colors.primary, false: colors.border }}
-        thumbColor={colors.background}
-      />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
+  screen: {
+    // iOS settings sit on the grouped background so the white cards read as raised.
+    backgroundColor: colors.groupedBackground,
+  },
   content: {
-    padding: spacing.md,
+    paddingVertical: spacing.lg,
     gap: spacing.xl,
     paddingBottom: spacing.xxl,
   },
-  section: {
+  bannerWrap: {
+    padding: isIOS ? spacing.md : 0,
+    paddingHorizontal: spacing.md,
+  },
+  buttonRow: {
     gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingBottom: isIOS ? spacing.md : 0,
   },
-  sectionBody: {
-    gap: spacing.md,
-  },
-  rateGrid: {
+  chipGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: isIOS ? spacing.md : 0,
   },
-  chip: {
-    minHeight: touchTarget.comfortable,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
+  emptyWrap: {
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    borderWidth: 2,
-    borderColor: colors.borderStrong,
-    backgroundColor: colors.background,
-    // flexGrow lets chips reflow onto more rows as the font scale climbs instead of
-    // being clipped at the right edge.
-    flexGrow: 1,
-  },
-  chipSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  chipPressed: {
-    opacity: 0.7,
-  },
-  voiceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    minHeight: touchTarget.comfortable,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 2,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  voiceRowSelected: {
-    borderColor: colors.primary,
-    backgroundColor: colors.background,
-  },
-  voiceText: {
-    flex: 1,
-    gap: spacing.xs,
-  },
-  radio: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 3,
-    borderColor: colors.borderStrong,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioDot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: colors.primary,
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    minHeight: touchTarget.comfortable,
-  },
-  toggleLabel: {
-    flex: 1,
-  },
-  switch: {
-    transform: [{ scaleX: 1.3 }, { scaleY: 1.3 }],
   },
 });

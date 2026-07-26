@@ -147,6 +147,7 @@ export function SpeechProvider({ children, engine = systemEngine }: Props) {
       engine.speak(trimmed.slice(0, engine.maxInputLength), activeVoice, {
         rate: settings.rate,
         pitch: settings.pitch,
+        overrideSilentSwitch: settings.speakOverSilentSwitch,
         onDone: () => {
           if (utteranceRef.current === token) setSpeaking(false);
         },
@@ -163,7 +164,14 @@ export function SpeechProvider({ children, engine = systemEngine }: Props) {
         },
       });
     },
-    [engine, activeVoice, settings.rate, settings.pitch, settings.haptics],
+    [
+      engine,
+      activeVoice,
+      settings.rate,
+      settings.pitch,
+      settings.haptics,
+      settings.speakOverSilentSwitch,
+    ],
   );
 
   const value = useMemo<SpeechContextValue>(

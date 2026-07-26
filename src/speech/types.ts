@@ -30,6 +30,11 @@ export type SpeakOptions = {
   /** 1.0 is the engine's normal rate. */
   rate: number;
   pitch: number;
+  /**
+   * Play even when the device is switched to silent. Honoured on iOS; Android exposes
+   * no equivalent, so implementations there may ignore it.
+   */
+  overrideSilentSwitch: boolean;
   onStart?: () => void;
   onDone?: () => void;
   onStopped?: () => void;

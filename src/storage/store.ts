@@ -18,8 +18,13 @@ export type Settings = {
   voiceId?: string;
   /** Vibrate on button presses. Some users find it reassuring, others find it startling. */
   haptics: boolean;
-  /** Speak the text as soon as the keyboard's done/return key is pressed. */
-  speakOnDone: boolean;
+  /**
+   * Speak through the iPhone's silent switch instead of being muted by it.
+   *
+   * Defaults on: an older user who has flipped that switch by accident reads a silent
+   * app as a broken app. iOS only — Android has no equivalent lever (see README).
+   */
+  speakOverSilentSwitch: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -27,7 +32,7 @@ export const DEFAULT_SETTINGS: Settings = {
   pitch: 1.0,
   voiceId: undefined,
   haptics: true,
-  speakOnDone: true,
+  speakOverSilentSwitch: true,
 };
 
 export type Phrase = {

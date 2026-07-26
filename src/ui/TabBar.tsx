@@ -2,7 +2,7 @@ import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from './Text';
-import { colors, fontSize, spacing, touchTarget } from './theme';
+import { colors, fontSize, isIOS, radius, ripple, spacing, touchTarget } from './theme';
 
 export type TabKey = 'speak' | 'phrases' | 'settings';
 
@@ -18,6 +18,10 @@ type Props = {
   bottomInset: number;
 };
 
+/**
+ * An iOS tab bar (hairline rule, tinted icon and label) or a Material 3 navigation bar
+ * (pill indicator behind the active icon, ripple on touch).
+ */
 export function TabBar({ active, onChange, bottomInset }: Props) {
   return (
     <View
@@ -34,21 +38,23 @@ export function TabBar({ active, onChange, bottomInset }: Props) {
             accessibilityLabel={tab.label}
             accessibilityHint={tab.hint}
             onPress={() => onChange(tab.key)}
+            android_ripple={ripple}
             style={({ pressed }) => [
               styles.tab,
-              selected && styles.tabSelected,
-              pressed && styles.tabPressed,
+              pressed && isIOS && styles.tabPressed,
             ]}
           >
-            <Text style={styles.icon} maxFontSizeMultiplier={1.4} accessible={false}>
-              {tab.icon}
-            </Text>
+            {/* Material 3 marks the active tab with a pill behind the icon. */}
+            <View style={[styles.iconSlot, !isIOS && selected && styles.indicator]}>
+              <Text style={styles.icon} maxFontSizeMultiplier={1.4} accessible={false}>
+                {tab.icon}
+              </Text>
+            </View>
             {/*
-              The tab labels are the one place we cap scaling below the app-wide 2.0x:
-              three fixed-width columns cannot fit "Settings" at 1.8x without clipping.
-              Capping is safe here because the tab bar is redundant navigation — the
-              icon plus the screen-reader label still identify the tab, and no content
-              is lost.
+              The one place the app caps scaling below its 2.0x ceiling: three fixed
+              columns cannot fit "Settings" at 1.8x. Safe here because the tab bar is
+              redundant navigation — the icon and the screen-reader label still identify
+              the tab, and no content is lost.
             */}
             <Text
               variant="caption"
@@ -69,12 +75,14 @@ export function TabBar({ active, onChange, bottomInset }: Props) {
 const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
-    borderTopWidth: 2,
-    borderTopColor: colors.border,
-    backgroundColor: colors.background,
+    backgroundColor: isIOS ? colors.background : colors.card,
     paddingTop: spacing.sm,
     paddingHorizontal: spacing.sm,
     gap: spacing.xs,
+    // iOS separates the tab bar with a hairline; Material 3 uses a surface tint instead.
+    ...(isIOS
+      ? { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }
+      : null),
   },
   tab: {
     flex: 1,
@@ -82,14 +90,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: spacing.xs,
-    borderRadius: spacing.md,
+    borderRadius: isIOS ? radius.field : radius.pill,
     gap: 2,
-  },
-  tabSelected: {
-    backgroundColor: colors.surfaceSunken,
+    overflow: 'hidden',
   },
   tabPressed: {
-    opacity: 0.7,
+    opacity: 0.6,
+  },
+  iconSlot: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+  },
+  indicator: {
+    backgroundColor: colors.raised,
   },
   icon: {
     fontSize: fontSize.title,
@@ -99,7 +115,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   labelSelected: {
-    color: colors.primary,
+    color: colors.accent,
     fontWeight: '700',
   },
 });

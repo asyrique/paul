@@ -17,6 +17,7 @@ import {
   MAX_FONT_SCALE,
   colors,
   fontSize,
+  isIOS,
   lineHeight,
   radius,
   spacing,
@@ -198,10 +199,12 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.lg,
   },
   input: {
-    borderWidth: 2,
+    // iOS text fields are hairline-bordered on a white fill; Material 3 outlined fields
+    // use a 1dp outline and a tinted container.
+    borderWidth: 1,
     borderColor: colors.borderStrong,
-    borderRadius: radius.md,
-    backgroundColor: colors.background,
+    borderRadius: radius.field,
+    backgroundColor: isIOS ? colors.background : colors.card,
     padding: spacing.md,
     fontSize: fontSize.body,
     lineHeight: lineHeight.body,
@@ -220,7 +223,7 @@ const styles = StyleSheet.create({
   actionBar: {
     padding: spacing.md,
     gap: spacing.sm,
-    borderTopWidth: 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
     backgroundColor: colors.background,
   },

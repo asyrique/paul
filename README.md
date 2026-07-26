@@ -4,7 +4,9 @@ An offline text-to-speech app. Type what you want to say, tap one big button, an
 phone says it out loud in an Australian voice.
 
 Built for older users on Samsung/Android: large type that follows the phone's own
-accessibility font size, high-contrast colours, and touch targets you cannot miss.
+accessibility font size, high-contrast colours, and touch targets you cannot miss. It
+follows each platform's visual conventions — Material 3 on Android, Apple HIG on iOS —
+so it looks like it belongs on the phone rather than like a cross-platform app.
 
 ## What it does
 
@@ -39,6 +41,22 @@ handles this rather than hoping for the best:
 The voice-selection logic is the fiddly part, so it is isolated in
 `src/speech/voiceRanking.ts` and unit tested.
 
+## Platform look
+
+`src/ui/theme.ts` holds two palettes and two sets of type and shape tokens, selected by
+platform. The differences are structural, not cosmetic:
+
+| | iOS | Android |
+| --- | --- | --- |
+| Settings | inset grouped cards, quiet uppercase headers | flat rows on the surface, accent-coloured headers |
+| Single choice | trailing checkmark | leading radio button |
+| Buttons | continuous 12pt corners, dim on press | Material 3 pills with a ripple |
+| Tab bar | hairline rule, tinted icon and label | pill indicator behind the active icon |
+| Touch feedback | opacity | `android_ripple` |
+| Switches | green, as iOS does | primary-coloured, as Material does |
+
+Where the two conflict with the audience, the accessibility floor wins — see below.
+
 ## Accessibility
 
 - All text scales with the OS font setting, up to 2.0x. Samsung's slider tops out at
@@ -50,7 +68,14 @@ The voice-selection logic is the fiddly part, so it is isolated in
 - Touch targets are 64dp for ordinary controls and 88dp for the primary ones, against
   Android's 48dp minimum.
 - Every control carries an `accessibilityRole`, label and hint for TalkBack/VoiceOver.
-- Text/background pairs clear WCAG AA for large text; body text clears AAA.
+- Text/background pairs clear WCAG AA. The stock platform accents do not: iOS
+  `systemBlue` gives white text only ~3.4:1 and `systemRed` ~3.1:1, so both are used at
+  darkened shades that keep the platform's hue and clear 4.5:1.
+- Two controls stay custom rather than native, on purpose. A five-segment
+  `UISegmentedControl` clips its labels well before 1.8x, and a Material slider has no
+  labels and needs fine motor control — so speaking speed uses large labelled chips that
+  reflow onto more rows. A native `Picker`'s ~44pt rows are below the 56dp floor, so the
+  voice list uses full-size rows. Both are still styled per platform.
 
 ## Running it
 
@@ -130,6 +155,27 @@ src/
 `SpeechProvider` takes the engine as a prop, so swapping in a bundled neural voice
 later (see below) means adding one file, not rewriting the UI.
 
+## Loudness
+
+Making speech louder is not something this app can do, and the reason is worth recording
+so it is not re-attempted:
+
+- `expo-speech` accepts a `volume` option, but it is **web-only**. The string `volume`
+  does not appear anywhere in the module's Kotlin or Swift source, so passing it on a
+  phone silently does nothing.
+- Setting the device's system volume needs `AudioManager` on Android — a custom native
+  module, which would mean giving up Expo Go — and on iOS there is no public API for it
+  at all.
+- `expo-audio` cannot help either. It only controls its own players, not the TTS engine,
+  and its library manifest pulls in `RECORD_AUDIO` plus a microphone foreground service,
+  which this app has no business requesting.
+
+What *is* available is iOS-only: `expo-speech` exposes `useApplicationAudioSession`, and
+setting it `false` hands playback to the system-managed session that speaks through the
+silent switch, the way VoiceOver does. That is the **Speak even on silent** setting, on by
+default because an older user who has knocked that switch reads a silent app as a broken
+one. The setting is hidden on Android, where there is nothing to change.
+
 ## Known tradeoffs
 
 These were judgement calls made without you in the room. Each is reversible.
@@ -145,7 +191,10 @@ download, a custom native module, no more Expo Go, and noticeably more work on i
 
 **Light theme only.** Predictable, maximum contrast, and no chance of a dark-mode
 regression going unnoticed. Users who have set their phone to dark mode will find this
-app stays light.
+app stays light. Both platform palettes are light-only; adding dark means a second pair.
+
+**No volume control.** See *Loudness* above — it is not possible from managed code, and
+on iOS not possible at all.
 
 **No speech history.** Saved phrases cover the repeated-use case; a history list would
 add a screen and clutter for a modest gain. Easy to add later.

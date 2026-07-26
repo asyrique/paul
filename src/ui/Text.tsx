@@ -1,25 +1,26 @@
 import React from 'react';
 import { StyleSheet, Text as RNText, TextProps } from 'react-native';
 
-import { MAX_FONT_SCALE, colors, fontSize, lineHeight } from './theme';
+import { MAX_FONT_SCALE, colors, fontSize, lineHeight, typography } from './theme';
 
 type Variant = 'display' | 'title' | 'body' | 'label' | 'caption';
 
 type Props = TextProps & {
   variant?: Variant;
   muted?: boolean;
-  onDark?: boolean;
+  onAccent?: boolean;
   center?: boolean;
 };
 
 /**
- * Every piece of text in the app goes through here, which is how we guarantee that
- * nothing accidentally ships with `allowFontScaling={false}` or a 13pt caption.
+ * All text goes through here, which is how the app guarantees nothing ships with
+ * `allowFontScaling={false}` or a 13pt caption, and how the per-platform weights and
+ * letter-spacing stay in one place.
  */
 export function Text({
   variant = 'body',
   muted,
-  onDark,
+  onAccent,
   center,
   style,
   ...rest
@@ -30,7 +31,7 @@ export function Text({
       style={[
         styles[variant],
         muted && styles.muted,
-        onDark && styles.onDark,
+        onAccent && styles.onAccent,
         center && styles.center,
         style,
       ]}
@@ -43,13 +44,14 @@ const styles = StyleSheet.create({
   display: {
     fontSize: fontSize.display,
     lineHeight: lineHeight.display,
-    fontWeight: '700',
+    fontWeight: typography.displayWeight,
+    letterSpacing: typography.displayTracking,
     color: colors.text,
   },
   title: {
     fontSize: fontSize.title,
     lineHeight: lineHeight.title,
-    fontWeight: '700',
+    fontWeight: typography.titleWeight,
     color: colors.text,
   },
   body: {
@@ -60,15 +62,17 @@ const styles = StyleSheet.create({
   label: {
     fontSize: fontSize.label,
     lineHeight: lineHeight.label,
-    fontWeight: '600',
+    fontWeight: typography.labelWeight,
+    letterSpacing: typography.labelTracking,
     color: colors.text,
   },
   caption: {
     fontSize: fontSize.caption,
     lineHeight: lineHeight.caption,
+    letterSpacing: typography.captionTracking,
     color: colors.textMuted,
   },
   muted: { color: colors.textMuted },
-  onDark: { color: colors.textOnDark },
+  onAccent: { color: colors.textOnAccent },
   center: { textAlign: 'center' },
 });

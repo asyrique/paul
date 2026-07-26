@@ -76,6 +76,11 @@ export const systemEngine: SpeechEngine = {
       language: voice?.language ?? 'en-AU',
       rate: options.rate,
       pitch: options.pitch,
+      // Inverted on purpose. `usesApplicationAudioSession = false` hands playback to a
+      // system-managed session, which is the one that speaks through the silent switch
+      // — the same way VoiceOver does. Leaving it true keeps speech inside our own
+      // session, where the switch mutes it. Ignored on Android.
+      useApplicationAudioSession: !options.overrideSilentSwitch,
       onStart: options.onStart,
       onDone: options.onDone,
       onStopped: options.onStopped,

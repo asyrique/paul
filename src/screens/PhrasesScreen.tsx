@@ -9,8 +9,10 @@ import {
   MAX_FONT_SCALE,
   colors,
   fontSize,
+  isIOS,
   lineHeight,
   radius,
+  ripple,
   spacing,
   touchTarget,
 } from '../ui/theme';
@@ -66,7 +68,8 @@ export function PhrasesScreen() {
               accessibilityLabel={`Say: ${item.text}`}
               accessibilityHint="Reads this phrase out loud"
               onPress={() => speak(item.text)}
-              style={({ pressed }) => [styles.phrase, pressed && styles.phrasePressed]}
+              android_ripple={ripple}
+              style={({ pressed }) => [styles.phrase, pressed && isIOS && styles.phrasePressed]}
             >
               <Text variant="body" maxFontSizeMultiplier={MAX_FONT_SCALE}>
                 {item.text}
@@ -78,9 +81,10 @@ export function PhrasesScreen() {
                 accessibilityLabel={`Delete phrase: ${item.text}`}
                 onPress={() => removePhrase(item)}
                 hitSlop={8}
-                style={({ pressed }) => [styles.delete, pressed && styles.deletePressed]}
+                android_ripple={ripple}
+                style={({ pressed }) => [styles.delete, pressed && isIOS && styles.deletePressed]}
               >
-                <Text variant="label" onDark center>
+                <Text variant="label" onAccent center>
                   Delete
                 </Text>
               </Pressable>
@@ -155,14 +159,17 @@ const styles = StyleSheet.create({
     minHeight: touchTarget.primary,
     justifyContent: 'center',
     padding: spacing.md,
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    borderWidth: 2,
+    // A tappable phrase is a card on both platforms: hairline-outlined on iOS, a filled
+    // Material 3 surface container with a ripple on Android.
+    backgroundColor: colors.card,
+    borderRadius: radius.card,
+    borderWidth: isIOS ? StyleSheet.hairlineWidth : 0,
     borderColor: colors.border,
+    overflow: 'hidden',
   },
   phrasePressed: {
-    backgroundColor: colors.surfaceSunken,
-    borderColor: colors.primary,
+    backgroundColor: colors.raised,
+    borderColor: colors.accent,
   },
   delete: {
     minWidth: touchTarget.comfortable + spacing.lg,
@@ -170,16 +177,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.md,
-    backgroundColor: colors.stop,
-    borderRadius: radius.lg,
+    backgroundColor: colors.destructive,
+    borderRadius: radius.control,
+    overflow: 'hidden',
   },
   deletePressed: {
-    backgroundColor: colors.stopPressed,
+    backgroundColor: colors.destructivePressed,
   },
   footer: {
     padding: spacing.md,
     gap: spacing.md,
-    borderTopWidth: 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
     backgroundColor: colors.background,
   },
@@ -187,15 +195,15 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   input: {
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: colors.borderStrong,
-    borderRadius: radius.md,
+    borderRadius: radius.field,
     padding: spacing.md,
     minHeight: touchTarget.comfortable,
     fontSize: fontSize.body,
     lineHeight: lineHeight.body,
     color: colors.text,
-    backgroundColor: colors.background,
+    backgroundColor: isIOS ? colors.background : colors.card,
   },
   footerRow: {
     flexDirection: 'row',
