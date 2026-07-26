@@ -31,6 +31,18 @@ function Shell() {
 
   const title = TABS.find((entry) => entry.key === tab)?.label ?? 'Say It';
 
+  /*
+    Android's edge-to-edge window resize subtracts the keyboard's inset but leaves the
+    navigation-bar inset in place. Normally the tab bar consumes that strip; while the
+    keyboard is up the tab bar is gone, so the strip ends up underneath the keyboard and
+    clips whatever sits at the bottom — the Speak button. The shell consumes it instead.
+
+    iOS needs no equivalent: KeyboardAvoidingView pads by the keyboard's full on-screen
+    overlap, which already covers the home-indicator area.
+  */
+  const insetUnderKeyboard =
+    keyboardVisible && Platform.OS === 'android' ? insets.bottom : 0;
+
   return (
     /*
       KeyboardAvoidingView belongs at the root, not inside a screen. It measures its own
@@ -41,7 +53,7 @@ function Shell() {
       own padding on top of that double-counts the keyboard.
     */
     <KeyboardAvoidingView
-      style={[styles.root, { paddingTop: insets.top }]}
+      style={[styles.root, { paddingTop: insets.top, paddingBottom: insetUnderKeyboard }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={styles.header}>

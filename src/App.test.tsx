@@ -16,13 +16,22 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 
 // Without real window metrics the provider renders an empty tree under the test renderer.
 jest.mock('react-native-safe-area-context', () => {
+  // Realistic, non-zero insets: a zero bottom inset would hide any mistake in how the
+  // navigation-bar strip under the keyboard is handled. Exposed on the mock so the
+  // assertions read the same object rather than repeating the numbers.
+  const insets = { top: 44, right: 0, bottom: 34, left: 0 };
   const actual = jest.requireActual('react-native-safe-area-context');
   return {
     ...actual,
     SafeAreaProvider: ({ children }: { children: React.ReactNode }) => children,
-    useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
+    useSafeAreaInsets: () => insets,
+    __mockInsets: insets,
   };
 });
+
+const INSETS = (
+  jest.requireMock('react-native-safe-area-context') as { __mockInsets: { bottom: number } }
+).__mockInsets;
 
 const AU_OFFLINE: SpeechVoice = {
   id: 'en-au-x-aua-local',
@@ -257,7 +266,7 @@ describe.each(['ios', 'android'] as const)('keyboard avoidance (%s)', (os) => {
     expect(view.queryByLabelText('Phrases')).not.toBeNull();
   });
 
-  it('never applies its own bottom inset for the keyboard', async () => {
+  it('reserves the navigation-bar strip under the keyboard on Android, and nothing on iOS', async () => {
     setPlatform(os);
     const keyboard = captureKeyboard();
     const view = await render(<App />);
@@ -265,17 +274,26 @@ describe.each(['ios', 'android'] as const)('keyboard avoidance (%s)', (os) => {
       timeout: 5000,
     });
 
+    const rootPaddingBottom = () => {
+      const root = view.getByRole('header').parent?.parent;
+      return flatten(root as { props: { style?: unknown } }).paddingBottom ?? 0;
+    };
+
+    expect(rootPaddingBottom()).toBe(0);
+
     await keyboard.emit(show);
 
-    // Regression guard. An earlier version measured the keyboard and padded the root by
-    // its height. On Android the window already resizes, so that double-counted the
-    // keyboard and threw the Speak button a full keyboard-height too high. Making room
-    // is KeyboardAvoidingView's job on iOS and the window's job on Android — never ours.
+    // Android's window resize subtracts the keyboard inset but leaves the navigation-bar
+    // inset in place, and with the tab bar hidden nothing else consumes it — so the
+    // shell must, or it clips the Speak button.
     //
-    // KeyboardAvoidingView owns this style slot, and it reports 0 here because its own
-    // subscription goes through the mocked addListener. So the check is that nothing
-    // has reserved keyboard-sized space of its own.
-    const root = view.getByRole('header').parent?.parent;
-    expect(flatten(root as { props: { style?: unknown } }).paddingBottom ?? 0).toBe(0);
+    // iOS must stay at 0: KeyboardAvoidingView owns this style slot and pads by the
+    // keyboard's full overlap, so anything we added here would double-count. It reports
+    // 0 during tests because its own subscription goes through the mocked addListener,
+    // which is exactly why this asserts against a keyboard-sized value never appearing.
+    expect(rootPaddingBottom()).toBe(os === 'android' ? INSETS.bottom : 0);
+
+    await keyboard.emit(hide);
+    expect(rootPaddingBottom()).toBe(0);
   });
 });
