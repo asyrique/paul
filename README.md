@@ -62,6 +62,24 @@ npx expo start
 Press `a` for an Android device or emulator. The app also runs in Expo Go — it uses no
 custom native code.
 
+### Why the SDK is pinned to 54
+
+Expo Go only ever supports one SDK version, and the build currently on the App Store is
+SDK 54 — Expo's SDK 57 client exists but is sitting in Apple review. Testing in Expo Go
+is the only route that needs neither a laptop nor a paid Apple Developer account, so the
+project is pinned to 54 to keep that route open.
+
+Nothing in the app depends on a newer SDK. The `expo-speech` API this app uses —
+`speak`, `getAvailableVoicesAsync`, `stop`, `maxSpeechInputLength`, the `Voice` shape and
+the `VoiceQuality` enum — is identical between SDK 54 and 57, and the UI uses only
+long-stable React Native primitives.
+
+To move to 57 once its Expo Go client clears review: bump `expo`, run
+`npx expo install --fix`, align `jest-expo`/`react-test-renderer`/`typescript`, and
+**remove `android.edgeToEdgeEnabled` from `app.json`** — SDK 57 rejects it, because
+Android 16 makes edge-to-edge mandatory. SDK 54 still requires it, which is the one
+config difference between the two.
+
 ```bash
 npm run lint       # eslint, warnings fail the build
 npm run typecheck  # tsc --noEmit
