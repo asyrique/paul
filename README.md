@@ -95,6 +95,37 @@ Where the two conflict with the audience, the accessibility floor wins — see b
   reflow onto more rows. A native `Picker`'s ~44pt rows are below the 56dp floor, so the
   voice list uses full-size rows. Both are still styled per platform.
 
+### Keyboard avoidance
+
+Worth reading before touching it — three plausible fixes each broke a real device.
+
+A single `KeyboardAvoidingView` at the root with `behavior="padding"` on **both**
+platforms does the whole job. Nothing else in the app may reserve space for the keyboard.
+
+It works because of one line in React Native: the padding is
+`frame.y + frame.height - keyboardTop`, its own bottom edge minus the keyboard's top, in
+screen coordinates. That self-corrects. If the window already resized for the IME the
+frame is shorter and the result collapses toward zero; if it did not resize, the result is
+the real overlap.
+
+Two things about it are easy to get wrong:
+
+- **It has to be the root.** The subtraction assumes the view reaches the bottom of the
+  screen. Nested above the tab bar it under-shot by the tab bar's height, which looked
+  like "the button rises but not far enough" on iOS.
+- **Whether Android resizes is not predictable, so do not compensate for it.** Expo Go
+  resizes, because the Expo Go host app is not edge-to-edge. A prebuilt app with
+  `edgeToEdgeEnabled` does *not*, even though the generated manifest still says
+  `adjustResize` — Android ignores it for edge-to-edge apps. And a partial resize leaves
+  just the navigation-bar strip exposed. Compensating for any one of those breaks the
+  other two: padding by the full keyboard height threw the button a keyboard-height too
+  high, padding by nothing clipped it by the navigation bar, and padding by
+  `insets.bottom` was right in Expo Go and hid the button completely in a release build.
+
+`useKeyboardVisible` returns a boolean and no measurements, deliberately, so there is
+nothing available to double-count with. It only drives the reactions: hiding the tab bar
+and shrinking the Speak button from 88dp to 64dp.
+
 ## Running it
 
 ```bash

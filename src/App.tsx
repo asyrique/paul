@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -31,30 +31,27 @@ function Shell() {
 
   const title = TABS.find((entry) => entry.key === tab)?.label ?? 'Say It';
 
-  /*
-    Android's edge-to-edge window resize subtracts the keyboard's inset but leaves the
-    navigation-bar inset in place. Normally the tab bar consumes that strip; while the
-    keyboard is up the tab bar is gone, so the strip ends up underneath the keyboard and
-    clips whatever sits at the bottom — the Speak button. The shell consumes it instead.
-
-    iOS needs no equivalent: KeyboardAvoidingView pads by the keyboard's full on-screen
-    overlap, which already covers the home-indicator area.
-  */
-  const insetUnderKeyboard =
-    keyboardVisible && Platform.OS === 'android' ? insets.bottom : 0;
-
   return (
     /*
-      KeyboardAvoidingView belongs at the root, not inside a screen. It measures its own
-      frame against the screen and assumes it reaches the bottom, so nesting it above the
-      tab bar made it under-shoot by the tab bar's height. As the root it is correct.
+      KeyboardAvoidingView, at the root, with `padding` on both platforms. Two things
+      about it are easy to get wrong and were both got wrong here first:
 
-      Android needs no behavior: the window already resizes for the IME, and adding our
-      own padding on top of that double-counts the keyboard.
+      It has to be the root. It pads by `frame.y + frame.height - keyboardTop`, measuring
+      its own bottom edge against the keyboard in screen coordinates, and that assumes it
+      reaches the bottom of the screen. Nesting it above the tab bar made it under-shoot
+      by the tab bar's height.
+
+      Android needs `padding` too, and nothing else should reserve keyboard space. That
+      same subtraction is self-correcting: when the window resizes for the IME the frame
+      shrinks and the result collapses toward zero; when it does not resize, the result is
+      the real overlap. Whether Android resizes is not ours to predict — Expo Go resizes
+      because the host app is not edge-to-edge, a prebuilt edge-to-edge app does not, and
+      a partial resize leaves just the navigation-bar strip. All three land correctly here,
+      which is why every hand-rolled inset that used to sit on this view is gone.
     */
     <KeyboardAvoidingView
-      style={[styles.root, { paddingTop: insets.top, paddingBottom: insetUnderKeyboard }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={[styles.root, { paddingTop: insets.top }]}
+      behavior="padding"
     >
       {/*
         An iOS large title sits low and heavy in its own space; a Material 3 small top

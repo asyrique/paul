@@ -267,7 +267,7 @@ describe.each(['ios', 'android'] as const)('keyboard avoidance (%s)', (os) => {
     expect(view.queryByLabelText('Phrases')).not.toBeNull();
   });
 
-  it('reserves the navigation-bar strip under the keyboard on Android, and nothing on iOS', async () => {
+  it('never reserves keyboard space itself — KeyboardAvoidingView owns that', async () => {
     setPlatform(os);
     const keyboard = captureKeyboard();
     const view = await render(<App />);
@@ -284,15 +284,24 @@ describe.each(['ios', 'android'] as const)('keyboard avoidance (%s)', (os) => {
 
     await keyboard.emit(show);
 
-    // Android's window resize subtracts the keyboard inset but leaves the navigation-bar
-    // inset in place, and with the tab bar hidden nothing else consumes it — so the
-    // shell must, or it clips the Speak button.
-    //
-    // iOS must stay at 0: KeyboardAvoidingView owns this style slot and pads by the
-    // keyboard's full overlap, so anything we added here would double-count. It reports
-    // 0 during tests because its own subscription goes through the mocked addListener,
-    // which is exactly why this asserts against a keyboard-sized value never appearing.
-    expect(rootPaddingBottom()).toBe(os === 'android' ? INSETS.bottom : 0);
+    /*
+      Zero on both platforms, and the history here is the reason this test exists.
+
+      KeyboardAvoidingView pads by its own bottom edge minus the keyboard's top, in screen
+      coordinates, which self-corrects whether or not the window resized for the IME. Every
+      attempt to help it along has broken a real device: padding by the whole keyboard
+      height threw the Speak button a keyboard-height too high, padding by nothing clipped
+      it by the navigation-bar strip, and padding by insets.bottom — correct in Expo Go,
+      which resizes — hid the button entirely in a prebuilt edge-to-edge build, which does
+      not.
+
+      So nothing here may reserve keyboard-sized space of its own. It reports 0 during
+      tests because KeyboardAvoidingView's own subscription goes through the mocked
+      addListener; the assertion is that no *other* code has added to it. INSETS.bottom is
+      deliberately non-zero so a stray safe-area inset would show up.
+    */
+    expect(INSETS.bottom).toBeGreaterThan(0);
+    expect(rootPaddingBottom()).toBe(0);
 
     await keyboard.emit(hide);
     expect(rootPaddingBottom()).toBe(0);
