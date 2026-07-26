@@ -1,8 +1,6 @@
 import React, { useRef, useState } from 'react';
 import {
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
   StyleSheet,
   TextInput,
@@ -15,7 +13,16 @@ import { newPhraseId } from '../storage/store';
 import { Banner } from '../ui/Banner';
 import { Button } from '../ui/Button';
 import { Text } from '../ui/Text';
-import { MAX_FONT_SCALE, colors, fontSize, lineHeight, radius, spacing } from '../ui/theme';
+import {
+  MAX_FONT_SCALE,
+  colors,
+  fontSize,
+  lineHeight,
+  radius,
+  spacing,
+  touchTarget,
+} from '../ui/theme';
+import { useKeyboardHeight } from '../ui/useKeyboardHeight';
 
 type Props = {
   onOpenSettings: () => void;
@@ -36,6 +43,7 @@ export function SpeakScreen({ onOpenSettings }: Props) {
   const [text, setText] = useState('');
   const inputRef = useRef<TextInput>(null);
   const { height } = useWindowDimensions();
+  const keyboardOpen = useKeyboardHeight() > 0;
 
   const trimmed = text.trim();
   const canSpeak = trimmed.length > 0;
@@ -63,10 +71,7 @@ export function SpeakScreen({ onOpenSettings }: Props) {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <View style={styles.flex}>
       <ScrollView
         style={styles.flex}
         contentContainerStyle={styles.scrollContent}
@@ -104,8 +109,12 @@ export function SpeakScreen({ onOpenSettings }: Props) {
           placeholderTextColor={colors.textMuted}
           maxFontSizeMultiplier={MAX_FONT_SCALE}
           accessibilityLabel="Message to speak"
-          // Grow with the screen but always leave the Speak button visible.
-          style={[styles.input, { minHeight: Math.max(140, height * 0.22) }]}
+          // Grow with the screen when there is room, but yield height once the
+          // keyboard is up so the Speak button still fits above it.
+          style={[
+            styles.input,
+            { minHeight: keyboardOpen ? touchTarget.comfortable : Math.max(140, height * 0.22) },
+          ]}
           textAlignVertical="top"
         />
 
@@ -140,12 +149,12 @@ export function SpeakScreen({ onOpenSettings }: Props) {
         with the keyboard open there is very little room left, and this is the one
         control that must never require scrolling to reach.
       */}
-      <View style={styles.actionBar}>
+      <View style={[styles.actionBar, keyboardOpen && styles.actionBarCompact]}>
         {speaking ? (
           <Button
             label="Stop talking"
             variant="stop"
-            size="huge"
+            size={keyboardOpen ? 'normal' : 'huge'}
             onPress={stop}
             accessibilityHint="Stops the speech straight away"
           />
@@ -153,7 +162,9 @@ export function SpeakScreen({ onOpenSettings }: Props) {
           <Button
             label="Speak"
             variant="primary"
-            size="huge"
+            // Shrinks to the `normal` size while the keyboard is up. That is still a
+            // 64dp target, comfortably above Android's 48dp minimum.
+            size={keyboardOpen ? 'normal' : 'huge'}
             onPress={handleSpeak}
             disabled={!canSpeak}
             accessibilityHint={
@@ -161,13 +172,13 @@ export function SpeakScreen({ onOpenSettings }: Props) {
             }
           />
         )}
-        {settings.rate !== 1 ? (
+        {settings.rate !== 1 && !keyboardOpen ? (
           <Text variant="caption" center style={styles.rateHint}>
             Speaking speed: {describeRate(settings.rate)} · change it in Settings
           </Text>
         ) : null}
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -212,6 +223,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 2,
     borderTopColor: colors.border,
     backgroundColor: colors.background,
+  },
+  actionBarCompact: {
+    paddingVertical: spacing.sm,
   },
   rateHint: {
     color: colors.textMuted,
