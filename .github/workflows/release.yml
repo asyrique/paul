@@ -1,0 +1,233 @@
+name: Release
+
+# Builds installable binaries. Two ways in:
+#   * push a tag like v1.0.0  -> builds both platforms and publishes a GitHub Release
+#   * run it by hand          -> builds whatever you tick, artifacts only, no Release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      build_android:
+        description: 'Build the Android APK and AAB'
+        type: boolean
+        default: true
+      build_ios:
+        description: 'Build the iOS app (slow — uses a macOS runner)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  android:
+    name: Android
+    if: github.event_name == 'push' || inputs.build_android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - run: npm ci
+
+      - name: Generate the native Android project
+        run: npx expo prebuild --platform android --no-install --clean
+
+      - name: Read app version
+        id: version
+        run: echo "version=$(node -p "require('./app.json').expo.version")" >> "$GITHUB_OUTPUT"
+
+      # Signing is optional. With the secrets set you get a Play-Store-ready binary;
+      # without them Gradle falls back to Expo's debug keystore, which still produces
+      # an APK you can sideload but which can never be updated by a properly signed
+      # build later. See docs/RELEASING.md.
+      - name: Prepare signing key
+        id: signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+            echo "Using the release keystore from repository secrets."
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Unsigned release build::ANDROID_KEYSTORE_BASE64 is not set, so this build is signed with the throwaway debug keystore. It installs fine for testing but cannot be published to Google Play. See docs/RELEASING.md."
+          fi
+
+      - name: Build APK and AAB
+        working-directory: android
+        env:
+          SIGNED: ${{ steps.signing.outputs.signed }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          # An array, not a string: passwords may legitimately contain spaces.
+          ARGS=()
+          if [ "$SIGNED" = "true" ]; then
+            ARGS+=("-Pandroid.injected.signing.store.file=$RUNNER_TEMP/release.keystore")
+            ARGS+=("-Pandroid.injected.signing.store.password=$KEYSTORE_PASSWORD")
+            ARGS+=("-Pandroid.injected.signing.key.alias=$KEY_ALIAS")
+            ARGS+=("-Pandroid.injected.signing.key.password=$KEY_PASSWORD")
+          fi
+          ./gradlew assembleRelease bundleRelease --no-daemon --stacktrace "${ARGS[@]}"
+
+      - name: Collect binaries
+        id: collect
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/app-release.apk "dist/SayIt-${VERSION}.apk"
+          cp android/app/build/outputs/bundle/release/app-release.aab "dist/SayIt-${VERSION}.aab"
+          ls -lh dist
+
+      - name: Remove the keystore from the runner
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.keystore"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+
+  ios:
+    name: iOS
+    if: github.event_name == 'push' || inputs.build_ios
+    runs-on: macos-latest
+    # Android is the primary target. A broken Xcode toolchain on the runner should not
+    # hold up an Android release, so this job reports failure without blocking.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Generate the native iOS project
+        run: npx expo prebuild --platform ios --no-install --clean
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: |
+            ios/Pods
+            ~/Library/Caches/CocoaPods
+          key: pods-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: pods-${{ runner.os }}-
+
+      - name: Install pods
+        run: npx pod-install ios
+
+      - name: Read app version
+        id: version
+        run: echo "version=$(node -p "require('./app.json').expo.version")" >> "$GITHUB_OUTPUT"
+
+      # There is no Apple Developer account wired into this repository, so we build
+      # with code signing switched off. The result is a real arm64 device build that
+      # a sideloading tool (AltStore, Sideloadly) or your own `codesign` run can
+      # re-sign. It will NOT install by double-clicking. For a signed build, see the
+      # EAS route in docs/RELEASING.md.
+      - name: Build unsigned device app
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -workspace ios/SayIt.xcworkspace \
+            -scheme SayIt \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath ios/build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Package as .ipa
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist Payload
+          cp -R ios/build/Build/Products/Release-iphoneos/SayIt.app Payload/
+          zip -qry "dist/SayIt-${VERSION}-unsigned.ipa" Payload
+          ls -lh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Publish GitHub Release
+    # Only tags publish. A manual run leaves the binaries as workflow artifacts so you
+    # can try them without minting a release. Publishes as long as Android succeeded,
+    # so a flaky macOS runner cannot block the release you actually care about.
+    needs: [android, ios]
+    if: |
+      always()
+      && startsWith(github.ref, 'refs/tags/v')
+      && needs.android.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten
+        run: |
+          mkdir -p dist
+          find artifacts -type f \( -name '*.apk' -o -name '*.aab' -o -name '*.ipa' \) -exec cp {} dist/ \;
+          ls -lh dist
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          body: |
+            ## Install on Android
+
+            Download the `.apk` and open it on the phone. Android will ask you to allow
+            installing from this source — that is expected for an app that is not from
+            the Play Store.
+
+            The `.aab` is only for uploading to Google Play.
+
+            ## Install on iOS
+
+            The `.ipa` is **unsigned** and cannot be installed by tapping it. Re-sign it
+            with AltStore, Sideloadly, or your own Apple Developer certificate first.
+
+            ## First run
+
+            Open Settings inside the app and check the voice. If it does not say
+            "Australian voice ready", tap **Fix the voice** and install the
+            English (Australia) voice data.

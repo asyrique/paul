@@ -1,0 +1,12 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    // Expo's base config leaves `typeRoots` unset and the automatic @types lookup does
+    // not find them through the extended config, so Jest's globals go missing in the
+    // test files. Naming both explicitly fixes it. This only affects globals — types
+    // reached through `import` (React, React Native) resolve as normal.
+    "typeRoots": ["./node_modules/@types"],
+    "types": ["jest"]
+  }
+}

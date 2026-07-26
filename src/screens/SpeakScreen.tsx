@@ -1,0 +1,219 @@
+import React, { useRef, useState } from 'react';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from 'react-native';
+
+import { useSpeech } from '../speech/SpeechProvider';
+import { newPhraseId } from '../storage/store';
+import { Banner } from '../ui/Banner';
+import { Button } from '../ui/Button';
+import { Text } from '../ui/Text';
+import { MAX_FONT_SCALE, colors, fontSize, lineHeight, radius, spacing } from '../ui/theme';
+
+type Props = {
+  onOpenSettings: () => void;
+};
+
+export function SpeakScreen({ onOpenSettings }: Props) {
+  const {
+    speak,
+    stop,
+    speaking,
+    settings,
+    phrases,
+    setPhrases,
+    voiceHealth,
+    lastError,
+    maxInputLength,
+  } = useSpeech();
+  const [text, setText] = useState('');
+  const inputRef = useRef<TextInput>(null);
+  const { height } = useWindowDimensions();
+
+  const trimmed = text.trim();
+  const canSpeak = trimmed.length > 0;
+  const overLimit = trimmed.length > maxInputLength;
+
+  const handleSpeak = () => {
+    if (!canSpeak) return;
+    speak(text);
+  };
+
+  const handleClear = () => {
+    setText('');
+    stop();
+    inputRef.current?.focus();
+  };
+
+  const handleSave = () => {
+    if (!canSpeak) return;
+    if (phrases.some((phrase) => phrase.text.trim() === trimmed)) {
+      Alert.alert('Already saved', 'That phrase is already in your saved phrases.');
+      return;
+    }
+    setPhrases([{ id: newPhraseId(), text: trimmed }, ...phrases]);
+    Alert.alert('Saved', 'You can find it on the Phrases tab.');
+  };
+
+  return (
+    <KeyboardAvoidingView
+      style={styles.flex}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView
+        style={styles.flex}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="none"
+      >
+        {voiceHealth.level !== 'good' ? (
+          <Banner
+            level={voiceHealth.level}
+            headline={voiceHealth.headline}
+            detail={voiceHealth.detail}
+            actionLabel="Open Settings to fix the voice"
+            onPress={onOpenSettings}
+          />
+        ) : null}
+
+        {lastError ? (
+          <Banner level="bad" headline="That did not speak" detail={lastError} />
+        ) : null}
+
+        <Text variant="label">What do you want to say?</Text>
+
+        <TextInput
+          ref={inputRef}
+          value={text}
+          onChangeText={setText}
+          multiline
+          autoCorrect
+          autoCapitalize="sentences"
+          // `default` rather than `done` so the return key inserts a line break; a
+          // multiline box that submits on Enter surprises people mid-sentence.
+          returnKeyType="default"
+          blurOnSubmit={false}
+          placeholder="Type here…"
+          placeholderTextColor={colors.textMuted}
+          maxFontSizeMultiplier={MAX_FONT_SCALE}
+          accessibilityLabel="Message to speak"
+          // Grow with the screen but always leave the Speak button visible.
+          style={[styles.input, { minHeight: Math.max(140, height * 0.22) }]}
+          textAlignVertical="top"
+        />
+
+        {overLimit ? (
+          <Text variant="caption" style={styles.limit}>
+            That is a bit long. Only the first {maxInputLength} characters will be spoken.
+          </Text>
+        ) : null}
+
+        <View style={styles.secondaryRow}>
+          <Button
+            label="Clear"
+            variant="secondary"
+            onPress={handleClear}
+            disabled={text.length === 0}
+            accessibilityHint="Erases the text box"
+            style={styles.secondaryButton}
+          />
+          <Button
+            label="Save phrase"
+            variant="secondary"
+            onPress={handleSave}
+            disabled={!canSpeak}
+            accessibilityHint="Adds this text to your saved phrases"
+            style={styles.secondaryButton}
+          />
+        </View>
+      </ScrollView>
+
+      {/*
+        The Speak button lives outside the ScrollView on purpose. At a 1.8x font scale
+        with the keyboard open there is very little room left, and this is the one
+        control that must never require scrolling to reach.
+      */}
+      <View style={styles.actionBar}>
+        {speaking ? (
+          <Button
+            label="Stop talking"
+            variant="stop"
+            size="huge"
+            onPress={stop}
+            accessibilityHint="Stops the speech straight away"
+          />
+        ) : (
+          <Button
+            label="Speak"
+            variant="primary"
+            size="huge"
+            onPress={handleSpeak}
+            disabled={!canSpeak}
+            accessibilityHint={
+              canSpeak ? 'Reads your text out loud' : 'Type something first'
+            }
+          />
+        )}
+        {settings.rate !== 1 ? (
+          <Text variant="caption" center style={styles.rateHint}>
+            Speaking speed: {describeRate(settings.rate)} · change it in Settings
+          </Text>
+        ) : null}
+      </View>
+    </KeyboardAvoidingView>
+  );
+}
+
+function describeRate(rate: number): string {
+  if (rate <= 0.6) return 'Very slow';
+  if (rate <= 0.8) return 'Slow';
+  if (rate < 1) return 'Relaxed';
+  if (rate <= 1.2) return 'Normal';
+  return 'Fast';
+}
+
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  scrollContent: {
+    padding: spacing.md,
+    gap: spacing.md,
+    paddingBottom: spacing.lg,
+  },
+  input: {
+    borderWidth: 2,
+    borderColor: colors.borderStrong,
+    borderRadius: radius.md,
+    backgroundColor: colors.background,
+    padding: spacing.md,
+    fontSize: fontSize.body,
+    lineHeight: lineHeight.body,
+    color: colors.text,
+  },
+  limit: {
+    color: colors.warning,
+  },
+  secondaryRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  secondaryButton: {
+    flex: 1,
+  },
+  actionBar: {
+    padding: spacing.md,
+    gap: spacing.sm,
+    borderTopWidth: 2,
+    borderTopColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  rateHint: {
+    color: colors.textMuted,
+  },
+});

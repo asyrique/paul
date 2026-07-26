@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "Say It",
+    "slug": "say-it",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "sayit",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.asyrique.sayit",
+      "buildNumber": "1"
+    },
+    "android": {
+      "package": "com.asyrique.sayit",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#1B3A5C",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
