@@ -1,5 +1,5 @@
 import React from 'react';
-import { Dimensions, Keyboard, Platform, StyleSheet, ViewStyle } from 'react-native';
+import { Keyboard, Platform, StyleSheet, ViewStyle } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
 import App from './App';
@@ -173,9 +173,9 @@ function captureKeyboard() {
 
   return {
     subscribed: (event: string) => (listeners[event]?.length ?? 0) > 0,
-    emit: async (event: string, payload: unknown) => {
+    emit: async (event: string) => {
       await act(async () => {
-        for (const callback of listeners[event] ?? []) callback(payload);
+        for (const callback of listeners[event] ?? []) callback({});
       });
     },
   };
@@ -185,33 +185,59 @@ function setPlatform(os: 'ios' | 'android') {
   Object.defineProperty(Platform, 'OS', { get: () => os, configurable: true });
 }
 
-const KEYBOARD_HEIGHT = 320;
+const EVENTS = {
+  ios: { show: 'keyboardWillShow', hide: 'keyboardWillHide' },
+  android: { show: 'keyboardDidShow', hide: 'keyboardDidHide' },
+} as const;
 
-/** iOS reports the keyboard's top edge in screen coordinates, not its height. */
-function iosFrame() {
-  return {
-    endCoordinates: {
-      screenY: Dimensions.get('window').height - KEYBOARD_HEIGHT,
-      height: KEYBOARD_HEIGHT,
-    },
-  };
+function flatten(element: { props: { style?: unknown } }): ViewStyle {
+  return (StyleSheet.flatten(element.props.style as ViewStyle) ?? {}) as ViewStyle;
 }
 
-function minHeightOf(element: { props: { style?: unknown } }): number | undefined {
-  const flat = StyleSheet.flatten(element.props.style as ViewStyle) as ViewStyle | undefined;
-  return typeof flat?.minHeight === 'number' ? flat.minHeight : undefined;
-}
-
-describe('keyboard avoidance', () => {
+describe.each(['ios', 'android'] as const)('keyboard avoidance (%s)', (os) => {
   const originalOS = Platform.OS as 'ios' | 'android';
+  const { show, hide } = EVENTS[os];
 
   afterEach(() => {
     jest.restoreAllMocks();
     setPlatform(originalOS);
   });
 
-  it('hides the tab bar while the keyboard is up so the footer clears it', async () => {
-    setPlatform('ios');
+  it('subscribes to the events this platform actually emits', async () => {
+    setPlatform(os);
+    const keyboard = captureKeyboard();
+    await renderSpeakScreen(fakeEngine().engine);
+
+    // Android reports only the "did" events. Listening for the iOS ones alone was why
+    // the footer previously sat behind the keyboard there.
+    expect(keyboard.subscribed(show)).toBe(true);
+    expect(keyboard.subscribed(hide)).toBe(true);
+  });
+
+  it('shrinks the Speak button vertically while the keyboard is up, then restores it', async () => {
+    setPlatform(os);
+    const keyboard = captureKeyboard();
+    const view = await renderSpeakScreen(fakeEngine().engine);
+
+    expect(flatten(view.getByRole('button', { name: 'Speak' })).minHeight).toBe(
+      touchTarget.primary,
+    );
+
+    await keyboard.emit(show);
+    const shrunk = flatten(view.getByRole('button', { name: 'Speak' })).minHeight;
+    expect(shrunk).toBe(touchTarget.comfortable);
+    expect(shrunk as number).toBeLessThan(touchTarget.primary);
+    // Still comfortably above Android's 48dp minimum target.
+    expect(shrunk as number).toBeGreaterThanOrEqual(48);
+
+    await keyboard.emit(hide);
+    expect(flatten(view.getByRole('button', { name: 'Speak' })).minHeight).toBe(
+      touchTarget.primary,
+    );
+  });
+
+  it('hides the tab bar while the keyboard is up, keeping Speak reachable', async () => {
+    setPlatform(os);
     const keyboard = captureKeyboard();
     const view = await render(<App />);
     await waitFor(() => expect(view.getByLabelText('Message to speak')).toBeTruthy(), {
@@ -221,55 +247,35 @@ describe('keyboard avoidance', () => {
     // "Phrases" only exists as a tab, so it is a clean probe for the tab bar.
     expect(view.queryByLabelText('Phrases')).not.toBeNull();
 
-    await keyboard.emit('keyboardWillChangeFrame', iosFrame());
+    await keyboard.emit(show);
     expect(view.queryByLabelText('Phrases')).toBeNull();
     // The Speak button must survive the reflow — it is the one control that may never
     // be hidden or pushed out of reach.
     expect(view.getByRole('button', { name: 'Speak' })).toBeTruthy();
 
-    await keyboard.emit('keyboardWillHide', {});
+    await keyboard.emit(hide);
     expect(view.queryByLabelText('Phrases')).not.toBeNull();
   });
 
-  it('shrinks the Speak button vertically while the keyboard is up, on iOS', async () => {
-    setPlatform('ios');
+  it('never applies its own bottom inset for the keyboard', async () => {
+    setPlatform(os);
     const keyboard = captureKeyboard();
-    const { engine } = fakeEngine();
-    const view = await renderSpeakScreen(engine);
-
-    expect(minHeightOf(view.getByRole('button', { name: 'Speak' }))).toBe(touchTarget.primary);
-
-    await keyboard.emit('keyboardWillChangeFrame', iosFrame());
-
-    const shrunk = minHeightOf(view.getByRole('button', { name: 'Speak' }));
-    expect(shrunk).toBe(touchTarget.comfortable);
-    expect(shrunk).toBeLessThan(touchTarget.primary);
-    // Still comfortably above Android's 48dp minimum target.
-    expect(shrunk as number).toBeGreaterThanOrEqual(48);
-
-    await keyboard.emit('keyboardWillHide', {});
-    expect(minHeightOf(view.getByRole('button', { name: 'Speak' }))).toBe(touchTarget.primary);
-  });
-
-  it('reacts on Android too, where the window does not resize', async () => {
-    setPlatform('android');
-    const keyboard = captureKeyboard();
-    const { engine } = fakeEngine();
-    const view = await renderSpeakScreen(engine);
-
-    // Android reports only `keyboardDidShow`. Subscribing to the iOS events alone was
-    // why the footer previously sat behind the keyboard here.
-    expect(keyboard.subscribed('keyboardDidShow')).toBe(true);
-    expect(minHeightOf(view.getByRole('button', { name: 'Speak' }))).toBe(touchTarget.primary);
-
-    await keyboard.emit('keyboardDidShow', {
-      endCoordinates: { height: KEYBOARD_HEIGHT },
+    const view = await render(<App />);
+    await waitFor(() => expect(view.getByLabelText('Message to speak')).toBeTruthy(), {
+      timeout: 5000,
     });
-    expect(minHeightOf(view.getByRole('button', { name: 'Speak' }))).toBe(
-      touchTarget.comfortable,
-    );
 
-    await keyboard.emit('keyboardDidHide', {});
-    expect(minHeightOf(view.getByRole('button', { name: 'Speak' }))).toBe(touchTarget.primary);
+    await keyboard.emit(show);
+
+    // Regression guard. An earlier version measured the keyboard and padded the root by
+    // its height. On Android the window already resizes, so that double-counted the
+    // keyboard and threw the Speak button a full keyboard-height too high. Making room
+    // is KeyboardAvoidingView's job on iOS and the window's job on Android — never ours.
+    //
+    // KeyboardAvoidingView owns this style slot, and it reports 0 here because its own
+    // subscription goes through the mocked addListener. So the check is that nothing
+    // has reserved keyboard-sized space of its own.
+    const root = view.getByRole('header').parent?.parent;
+    expect(flatten(root as { props: { style?: unknown } }).paddingBottom ?? 0).toBe(0);
   });
 });

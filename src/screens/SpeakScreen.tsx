@@ -22,7 +22,7 @@ import {
   spacing,
   touchTarget,
 } from '../ui/theme';
-import { useKeyboardHeight } from '../ui/useKeyboardHeight';
+import { useKeyboardVisible } from '../ui/useKeyboardVisible';
 
 type Props = {
   onOpenSettings: () => void;
@@ -43,7 +43,7 @@ export function SpeakScreen({ onOpenSettings }: Props) {
   const [text, setText] = useState('');
   const inputRef = useRef<TextInput>(null);
   const { height } = useWindowDimensions();
-  const keyboardOpen = useKeyboardHeight() > 0;
+  const keyboardOpen = useKeyboardVisible();
 
   const trimmed = text.trim();
   const canSpeak = trimmed.length > 0;
