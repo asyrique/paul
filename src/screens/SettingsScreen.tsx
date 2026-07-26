@@ -1,15 +1,31 @@
-import React from 'react';
-import { Platform, ScrollView, StyleSheet, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Platform, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { useSpeech } from '../speech/SpeechProvider';
 import { openTtsSettings } from '../speech/openTtsSettings';
 import { SpeechVoice } from '../speech/types';
+import {
+  VOICE_SEARCH_LIMIT,
+  VOICE_SHORTLIST_SIZE,
+  describeLanguage,
+  filterVoices,
+  shortlistVoices,
+} from '../speech/voiceSearch';
 import { Banner } from '../ui/Banner';
 import { Button } from '../ui/Button';
 import { Chip } from '../ui/Chip';
 import { Section, SelectRow, Separator, SwitchRow } from '../ui/List';
 import { Text } from '../ui/Text';
-import { colors, isIOS, spacing } from '../ui/theme';
+import {
+  MAX_FONT_SCALE,
+  colors,
+  fontSize,
+  isIOS,
+  lineHeight,
+  radius,
+  spacing,
+  touchTarget,
+} from '../ui/theme';
 
 const SAMPLE = 'G’day. This is how I will sound.';
 
@@ -33,6 +49,25 @@ export function SettingsScreen() {
     stop,
     speaking,
   } = useSpeech();
+  const [voiceQuery, setVoiceQuery] = useState('');
+
+  /*
+    Only ever render a handful of rows. A Samsung with Google's engine reports several
+    hundred voices, and building a SelectRow for each one blocked the JS thread for
+    seconds every time this screen opened. Search reaches the rest.
+  */
+  const searching = voiceQuery.trim().length > 0;
+  const matches = useMemo(
+    () => (searching ? filterVoices(voices, voiceQuery) : voices),
+    [voices, voiceQuery, searching],
+  );
+  const shown = useMemo(
+    () =>
+      searching
+        ? matches.slice(0, VOICE_SEARCH_LIMIT)
+        : shortlistVoices(voices, settings.voiceId, VOICE_SHORTLIST_SIZE),
+    [searching, matches, voices, settings.voiceId],
+  );
 
   const handleFixVoice = async () => {
     await openTtsSettings();
@@ -105,15 +140,38 @@ export function SettingsScreen() {
           </View>
         ) : (
           <>
-            <SelectRow
-              label="Best available"
-              detail="Recommended"
-              selected={settings.voiceId === undefined}
-              onPress={() => updateSettings({ voiceId: undefined })}
-            />
-            {voices.map((voice) => (
+            {/* No point offering search when everything already fits. */}
+            {voices.length > VOICE_SHORTLIST_SIZE ? (
+              <View style={styles.searchWrap}>
+                <TextInput
+                  value={voiceQuery}
+                  onChangeText={setVoiceQuery}
+                  placeholder="Search voices, e.g. Australian"
+                  placeholderTextColor={colors.textMuted}
+                  autoCorrect={false}
+                  autoCapitalize="none"
+                  clearButtonMode="while-editing"
+                  returnKeyType="search"
+                  maxFontSizeMultiplier={MAX_FONT_SCALE}
+                  accessibilityLabel="Search voices"
+                  accessibilityHint="Filters the list of voices on this phone"
+                  style={styles.search}
+                />
+              </View>
+            ) : null}
+
+            {searching ? null : (
+              <SelectRow
+                label="Best available"
+                detail="Recommended"
+                selected={settings.voiceId === undefined}
+                onPress={() => updateSettings({ voiceId: undefined })}
+              />
+            )}
+
+            {shown.map((voice, index) => (
               <React.Fragment key={voice.id}>
-                <Separator />
+                {index === 0 && searching ? null : <Separator />}
                 <SelectRow
                   label={voice.name}
                   detail={describeVoiceRow(voice, voice.id === activeVoice?.id)}
@@ -122,6 +180,10 @@ export function SettingsScreen() {
                 />
               </React.Fragment>
             ))}
+
+            <View style={styles.emptyWrap}>
+              <Text variant="caption">{summarise(voices.length, matches.length, shown.length, searching, voiceQuery)}</Text>
+            </View>
           </>
         )}
       </Section>
@@ -171,9 +233,33 @@ export function SettingsScreen() {
   );
 }
 
+/** Plain-words status line under the list, so the cap is never a silent truncation. */
+function summarise(
+  total: number,
+  matched: number,
+  showing: number,
+  searching: boolean,
+  query: string,
+): string {
+  if (searching && matched === 0) {
+    return `No voices match “${query.trim()}”. Try “Australian”, “English” or “offline”.`;
+  }
+  if (searching && matched > showing) {
+    return `Showing the first ${showing} of ${matched} matches. Keep typing to narrow it down.`;
+  }
+  if (searching) {
+    return matched === 1 ? '1 voice matches.' : `${matched} voices match.`;
+  }
+  if (total > showing) {
+    return `Showing ${showing} of ${total} voices on this phone. Search above to find the others.`;
+  }
+  return total === 1 ? '1 voice on this phone.' : `${total} voices on this phone.`;
+}
+
 function describeVoiceRow(voice: SpeechVoice, inUse: boolean): string {
-  const bits = [voice.language];
-  if (voice.isAustralian) bits.push('Australian');
+  // The engine's own name is often something like "en-au-x-aua-local", so lead the
+  // detail line with a language a person recognises.
+  const bits = [describeLanguage(voice.language)];
   if (voice.offline === 'offline') bits.push('works offline');
   if (voice.offline === 'network') bits.push('needs internet');
   if (voice.enhanced) bits.push('higher quality');
@@ -210,5 +296,22 @@ const styles = StyleSheet.create({
   emptyWrap: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
+  },
+  searchWrap: {
+    paddingHorizontal: spacing.md,
+    paddingTop: isIOS ? spacing.md : 0,
+    paddingBottom: spacing.sm,
+  },
+  search: {
+    // iOS search fields are a filled rounded rect; Material 3 search bars are pills.
+    minHeight: touchTarget.min,
+    borderRadius: isIOS ? radius.field : radius.pill,
+    borderWidth: isIOS ? 0 : 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: isIOS ? colors.raised : colors.card,
+    paddingHorizontal: spacing.md,
+    fontSize: fontSize.body,
+    lineHeight: lineHeight.body,
+    color: colors.text,
   },
 });

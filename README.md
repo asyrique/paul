@@ -18,6 +18,24 @@ so it looks like it belongs on the phone rather than like a cross-platform app.
 - **Settings** — speaking speed, which voice to use, and a one-tap shortcut to the
   phone's voice-download screen if the Australian voice is missing.
 
+### The voice list is deliberately short
+
+A Samsung running Google's engine reports several hundred voices. Rendering a row for
+each one built roughly a thousand components synchronously and blocked the JS thread for
+about five seconds every time Settings opened — the fetch was never the problem, since
+voices are read once at launch, not on tab change.
+
+So Settings shows the top `VOICE_SHORTLIST_SIZE` of the ranked order — which is already
+the most Australian and most offline-capable — plus the user's own pick if it has fallen
+outside that. A search box reaches the rest, capped at `VOICE_SEARCH_LIMIT` results so a
+single broad letter cannot rebuild the slow list. A line under the list always states
+what is being hidden, so the cap is never a silent truncation.
+
+Search matches the words a person would actually reach for, not just what the engine
+calls the voice: "australian", "offline", "french" all work against a voice named
+`en-au-x-aua-local`. That mapping lives in `src/speech/voiceSearch.ts` and is unit
+tested.
+
 ## Offline behaviour
 
 Speech comes from the phone's own text-to-speech engine (Samsung TTS or Google Speech

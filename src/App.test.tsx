@@ -360,3 +360,76 @@ describe('speaking through the silent switch', () => {
     expect(view.queryByLabelText('Vibrate when I tap')).not.toBeNull();
   });
 });
+
+describe('the voice list stays small', () => {
+  /**
+   * A Samsung with Google's engine reports hundreds of voices. Rendering a row for each
+   * one blocked the JS thread for seconds whenever Settings opened, so the screen must
+   * only ever build a handful.
+   */
+  const MANY_VOICES: SpeechVoice[] = [
+    AU_OFFLINE,
+    ...Array.from({ length: 200 }, (_, index) => ({
+      id: `filler-${index}`,
+      name: `Filler voice ${index}`,
+      language: 'en-US',
+      isAustralian: false,
+      offline: 'unknown' as const,
+      enhanced: false,
+    })),
+    {
+      id: 'fr-fr-x-frb-local',
+      name: 'fr-fr-x-frb-local',
+      language: 'fr-FR',
+      isAustralian: false,
+      offline: 'offline' as const,
+      enhanced: false,
+    },
+  ];
+
+  it('renders only a shortlist, not every voice on the phone', async () => {
+    const view = await renderSettings(fakeEngine(MANY_VOICES).engine);
+
+    // The best voice is there; a voice from deep in the list is not.
+    expect(view.queryByLabelText(/English \(Australia\)/)).not.toBeNull();
+    expect(view.queryByLabelText(/Filler voice 150/)).toBeNull();
+    expect(view.queryByLabelText(/fr-fr-x-frb-local/)).toBeNull();
+  });
+
+  it('says how many voices it is hiding rather than truncating silently', async () => {
+    const view = await renderSettings(fakeEngine(MANY_VOICES).engine);
+    expect(view.queryByText(/of 202 voices on this phone/)).not.toBeNull();
+  });
+
+  it('reaches the rest through search', async () => {
+    const view = await renderSettings(fakeEngine(MANY_VOICES).engine);
+
+    // "french" appears nowhere in that voice's name — it is matched via the language tag.
+    await fireEvent.changeText(view.getByLabelText('Search voices'), 'french');
+
+    expect(view.queryByLabelText(/fr-fr-x-frb-local/)).not.toBeNull();
+    expect(view.queryByLabelText(/English \(Australia\)/)).toBeNull();
+  });
+
+  it('explains an empty search instead of showing a blank list', async () => {
+    const view = await renderSettings(fakeEngine(MANY_VOICES).engine);
+
+    await fireEvent.changeText(view.getByLabelText('Search voices'), 'klingon');
+
+    expect(view.queryByText(/No voices match/)).not.toBeNull();
+  });
+
+  it('caps broad search results so a single letter cannot rebuild the slow list', async () => {
+    const view = await renderSettings(fakeEngine(MANY_VOICES).engine);
+
+    await fireEvent.changeText(view.getByLabelText('Search voices'), 'e');
+
+    expect(view.queryByText(/Keep typing to narrow it down/)).not.toBeNull();
+    expect(view.queryByLabelText(/Filler voice 150/)).toBeNull();
+  });
+
+  it('offers no search box when every voice already fits', async () => {
+    const view = await renderSettings(fakeEngine([AU_OFFLINE, US_NETWORK]).engine);
+    expect(view.queryByLabelText('Search voices')).toBeNull();
+  });
+});
