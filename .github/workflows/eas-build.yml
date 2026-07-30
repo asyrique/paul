@@ -1,0 +1,80 @@
+name: EAS Build
+
+# The cloud alternative to release.yml's local Gradle build. Use this when you need a
+# properly signed iOS build, or want EAS to manage the Android keystore and version codes.
+#
+# Requires one repository secret, EXPO_TOKEN — see docs/RELEASING.md. Nothing here runs on
+# a push; EAS build minutes are limited, so it is manual only.
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Which platform to build'
+        type: choice
+        default: android
+        options: [android, ios, all]
+      profile:
+        description: 'eas.json build profile'
+        type: choice
+        default: preview
+        options: [preview, production, simulator, development]
+      wait:
+        description: 'Wait for the build to finish (off just queues it and exits)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: eas-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: ${{ inputs.platform }} / ${{ inputs.profile }}
+    runs-on: ubuntu-latest
+    steps:
+      # Fail early and in plain words. Without this, a missing token surfaces much later
+      # as an opaque authentication error from eas-cli.
+      - name: Check for the Expo token
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error title=EXPO_TOKEN is not set::Create a token at https://expo.dev/settings/access-tokens and add it as a repository secret named EXPO_TOKEN. See docs/RELEASING.md."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: expo/expo-github-action@v9
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - run: npm ci
+
+      # `eas build` reads extra.eas.projectId from app.json. It is written by `eas init`,
+      # which has to be run once by someone signed in to the Expo account — it cannot be
+      # committed ahead of time, since the id is minted server-side.
+      - name: Confirm the project is linked to EAS
+        run: |
+          if ! node -e "process.exit(require('./app.json').expo?.extra?.eas?.projectId ? 0 : 1)"; then
+            echo "::error title=No EAS project id::Run 'eas init' locally and commit the extra.eas.projectId it adds to app.json. See docs/RELEASING.md."
+            exit 1
+          fi
+
+      - name: Build
+        run: |
+          eas build \
+            --platform ${{ inputs.platform }} \
+            --profile ${{ inputs.profile }} \
+            --non-interactive \
+            ${{ inputs.wait == true && '--wait' || '--no-wait' }}
+
+      - name: Where to find it
+        if: always()
+        run: echo "Builds and artifacts are listed at https://expo.dev/accounts/_/projects/say-it/builds"
