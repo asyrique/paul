@@ -2,7 +2,8 @@ import React from 'react';
 import { Pressable, StyleSheet, Switch, View } from 'react-native';
 
 import { Text } from './Text';
-import { colors, isIOS, radius, ripple, spacing, touchTarget } from './theme';
+import { scaleDimension } from './scale';
+import { colors, isIOS, layoutScale, radius, ripple, spacing, touchTarget } from './theme';
 
 /**
  * Settings lists in each platform's idiom.
@@ -201,9 +202,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   radio: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: scaleDimension(26, layoutScale),
+    height: scaleDimension(26, layoutScale),
+    borderRadius: scaleDimension(13, layoutScale),
     borderWidth: 2,
     borderColor: colors.borderStrong,
     alignItems: 'center',
@@ -213,9 +214,9 @@ const styles = StyleSheet.create({
     borderColor: colors.accent,
   },
   radioDot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    width: scaleDimension(14, layoutScale),
+    height: scaleDimension(14, layoutScale),
+    borderRadius: scaleDimension(7, layoutScale),
     backgroundColor: colors.accent,
   },
   androidSwitch: {

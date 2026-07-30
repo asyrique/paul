@@ -13,11 +13,13 @@ import { newPhraseId } from '../storage/store';
 import { Banner } from '../ui/Banner';
 import { Button } from '../ui/Button';
 import { Text } from '../ui/Text';
+import { scaleDimension } from '../ui/scale';
 import {
   MAX_FONT_SCALE,
   colors,
   fontSize,
   isIOS,
+  layoutScale,
   lineHeight,
   radius,
   spacing,
@@ -114,7 +116,11 @@ export function SpeakScreen({ onOpenSettings }: Props) {
           // keyboard is up so the Speak button still fits above it.
           style={[
             styles.input,
-            { minHeight: keyboardOpen ? touchTarget.comfortable : Math.max(140, height * 0.22) },
+            {
+              minHeight: keyboardOpen
+                ? touchTarget.comfortable
+                : Math.max(scaleDimension(140, layoutScale), height * 0.22),
+            },
           ]}
           textAlignVertical="top"
         />

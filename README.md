@@ -81,10 +81,12 @@ Where the two conflict with the audience, the accessibility floor wins — see b
   1.8x, so nothing is clipped at the maximum a user can actually set. The only
   exception is the three tab-bar labels, capped at 1.3x — capping is safe there because
   the icon and the screen-reader label still identify each tab and no content is lost.
+- The app's own enlargement scales back by however much the OS is already enlarging, so
+  the two never compound — see below.
 - Layouts reflow and scroll instead of clipping, and the Speak button sits outside the
   scroll view so it never scrolls out of reach.
 - Touch targets are 64dp for ordinary controls and 88dp for the primary ones, against
-  Android's 48dp minimum.
+  Android's 48dp minimum — and never scale below that 48dp floor.
 - Every control carries an `accessibilityRole`, label and hint for TalkBack/VoiceOver.
 - Text/background pairs clear WCAG AA. The stock platform accents do not: iOS
   `systemBlue` gives white text only ~3.4:1 and `systemRed` ~3.1:1, so both are used at
@@ -94,6 +96,43 @@ Where the two conflict with the audience, the accessibility floor wins — see b
   labels and needs fine motor control — so speaking speed uses large labelled chips that
   reflow onto more rows. A native `Picker`'s ~44pt rows are below the 56dp floor, so the
   voice list uses full-size rows. Both are still styled per platform.
+
+### The app's enlargement fills in, it does not stack
+
+The UI is drawn deliberately oversized. On a phone whose owner has *already* turned up
+Android's display size or font size, that oversizing compounded with the OS's and the
+result was unusable. So the app's own enlargement now scales back by however much the OS
+is already doing — a phone at its defaults sees the design exactly as drawn, and a phone
+already magnified gets ordinary sizes that the OS then magnifies to roughly the same
+place.
+
+Android has two independent magnifiers, both under "Display size and text", and they need
+different answers:
+
+| Setting | What it scales | Response |
+| --- | --- | --- |
+| Display size | every dp, so the dp viewport narrows | shrink *all* tokens — type, spacing, touch targets, radii |
+| Font size | text only, applied by React Native | blend our large type toward the platform's ordinary type |
+
+Neither setting is read directly, because React Native cannot: distinguishing a raised
+density from the device's native one needs `DENSITY_DEVICE_STABLE` through native code.
+Both have observable consequences instead — a narrower dp viewport and a higher font scale
+— and responding to those also does the right thing on a genuinely small phone, which no
+amount of setting-sniffing would.
+
+Raising the font setting still makes text bigger. It just grows from a smaller base rather
+than multiplying an already-large one, so the total stays sane. Touch targets never scale
+below Android's 48dp minimum whatever the combination, and the design is never *inflated*
+past what it was drawn as, so a tablet does not get a cartoon version.
+
+The maths lives in `src/ui/scale.ts`, applied by `src/ui/theme.ts`. Both are tested,
+including the wiring — `theme.test.ts` reloads the theme under different device conditions,
+since the arithmetic being right proves nothing about the tokens using it.
+
+One tradeoff: these are read once at module load, because changing them forces every
+`StyleSheet` in the app to become dynamic for no real gain. Display size and font size are
+set once and left alone, and Android restarts the activity when they change. Changing
+either while the app is running needs the app reopened to take effect.
 
 ### Keyboard avoidance
 

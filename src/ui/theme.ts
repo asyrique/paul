@@ -1,4 +1,12 @@
-import { Platform } from 'react-native';
+import { Dimensions, PixelRatio, Platform } from 'react-native';
+
+import {
+  blendFontSize,
+  computeLayoutScale,
+  computeTypeBlend,
+  scaleDimension,
+  scaleTouchTarget,
+} from './scale';
 
 /**
  * Two design languages, one accessibility floor.
@@ -9,7 +17,8 @@ import { Platform } from 'react-native';
  * this audience, the floor wins:
  *
  *  - Nothing opts out of the OS font scale, up to 2.0x (Samsung's slider tops out at 1.8x).
- *  - Primary controls stay at least 56dp tall, against Material's 48dp and Apple's 44pt.
+ *  - Primary controls stay at least 48dp tall — Android's minimum — and 56dp+ whenever
+ *    the screen has room for it.
  *  - Text/background pairs clear WCAG AA. The stock accents do not: iOS systemBlue
  *    (#007AFF) gives white text only ~3.4:1 and systemRed (#FF3B30) ~3.1:1, so both are
  *    used at darkened shades that keep the platform's hue while clearing 4.5:1.
@@ -105,11 +114,18 @@ export const colors: Palette = Platform.select({ ios, default: android });
 
 export const isIOS = Platform.OS === 'ios';
 
-/**
- * Base sizes in points, deliberately above both platforms' defaults. React Native
- * multiplies these by the OS font scale, so they are the floor a user sees at 1.0x.
- */
-export const fontSize = {
+/*
+  Measured once, at module load. Display size and font size are settings a user picks and
+  then leaves alone, and changing either restarts the activity — so re-reading them on
+  every render would buy nothing and would force every StyleSheet in the app to become
+  dynamic. The tradeoff: changing the setting while the app is already running needs the
+  app reopened to take effect. See src/ui/scale.ts for why these two values are the signal.
+*/
+export const layoutScale = computeLayoutScale(Dimensions.get('window').width);
+const typeBlend = computeTypeBlend(PixelRatio.getFontScale());
+
+/** This app's oversized type, used when the OS is not already enlarging anything. */
+const LARGE_TYPE = {
   display: isIOS ? 34 : 30,
   title: isIOS ? 24 : 23,
   button: isIOS ? 22 : 21,
@@ -118,13 +134,44 @@ export const fontSize = {
   caption: 17,
 } as const;
 
+/**
+ * Each platform's ordinary type, blended toward as the OS font scale climbs. At the top of
+ * the slider the app asks for nothing extra and lets the OS do all of the enlarging.
+ */
+const NORMAL_TYPE = {
+  display: isIOS ? 28 : 24,
+  title: isIOS ? 20 : 22,
+  button: isIOS ? 17 : 14,
+  body: isIOS ? 17 : 16,
+  label: isIOS ? 15 : 14,
+  caption: isIOS ? 13 : 12,
+} as const;
+
+type TypeVariant = keyof typeof LARGE_TYPE;
+
+function typeSize(variant: TypeVariant): number {
+  return blendFontSize(LARGE_TYPE[variant], NORMAL_TYPE[variant], typeBlend, layoutScale);
+}
+
+export const fontSize = {
+  display: typeSize('display'),
+  title: typeSize('title'),
+  button: typeSize('button'),
+  body: typeSize('body'),
+  label: typeSize('label'),
+  caption: typeSize('caption'),
+} as const;
+
+/** Kept proportional to the type it wraps, so blended sizes never crowd or gap. */
+const LINE_HEIGHT_RATIO = 1.35;
+
 export const lineHeight = {
-  display: isIOS ? 42 : 38,
-  title: isIOS ? 32 : 30,
-  button: 28,
-  body: 30,
-  label: 26,
-  caption: 24,
+  display: Math.round(fontSize.display * (isIOS ? 1.24 : 1.27)),
+  title: Math.round(fontSize.title * 1.3),
+  button: Math.round(fontSize.button * 1.27),
+  body: Math.round(fontSize.body * LINE_HEIGHT_RATIO),
+  label: Math.round(fontSize.label * LINE_HEIGHT_RATIO),
+  caption: Math.round(fontSize.caption * 1.4),
 } as const;
 
 /**
@@ -144,27 +191,33 @@ export const typography = {
 /** Samsung tops out at 1.8x, so 2.0 leaves headroom without letting a word break out. */
 export const MAX_FONT_SCALE = 2.0;
 
-/** Above Material's 48dp and Apple's 44pt minimums, on purpose. */
+/**
+ * Above Material's 48dp and Apple's 44pt minimums, on purpose — and never scaled below
+ * Android's 48dp, however tight the viewport gets.
+ */
 export const touchTarget = {
-  min: 56,
-  comfortable: 64,
-  primary: 88,
+  min: scaleTouchTarget(56, layoutScale),
+  comfortable: scaleTouchTarget(64, layoutScale),
+  primary: scaleTouchTarget(88, layoutScale),
 } as const;
 
 export const spacing = {
-  xs: 4,
-  sm: 8,
-  md: 16,
-  lg: 24,
-  xl: 32,
-  xxl: 48,
+  xs: scaleDimension(4, layoutScale),
+  sm: scaleDimension(8, layoutScale),
+  md: scaleDimension(16, layoutScale),
+  lg: scaleDimension(24, layoutScale),
+  xl: scaleDimension(32, layoutScale),
+  xxl: scaleDimension(48, layoutScale),
 } as const;
 
-/** Apple uses continuous corners around 10–12pt; Material 3 buttons are full pills. */
+/**
+ * Apple uses continuous corners around 10–12pt; Material 3 buttons are full pills. `pill`
+ * is a "round it completely" sentinel rather than a measurement, so it is never scaled.
+ */
 export const radius = {
-  control: isIOS ? 12 : 100,
-  card: isIOS ? 10 : 16,
-  field: isIOS ? 10 : 12,
+  control: isIOS ? scaleDimension(12, layoutScale) : 100,
+  card: scaleDimension(isIOS ? 10 : 16, layoutScale),
+  field: scaleDimension(isIOS ? 10 : 12, layoutScale),
   pill: 100,
 } as const;
 
