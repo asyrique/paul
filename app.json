@@ -27,6 +27,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "97cae049-ac80-40f1-9853-15d9d17f918d"
+      }
+    },
+    "owner": "wanderingfree"
   }
 }
